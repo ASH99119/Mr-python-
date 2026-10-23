@@ -56,6 +56,8 @@ def process_ar_casting():
     while cap_thread.read() is None: time.sleep(0.05)
     prev_time, last_pitch_send_time = time.time(), 0.0
 
+    # 【新增】初始化上一帧的滤波角度
+    last_filtered_pitch = 0.0
 
     while not cap_thread.stopped:
         frame = cap_thread.read()
@@ -98,7 +100,22 @@ def process_ar_casting():
                 Z = depth_receiver.get_depth()      # 瞬间读出 C++ 最新的物理深度
                 if Z <= 0: Z = 3.0                  # 防御机制：防止除数为 0
                 real_height_diff = (Z / FY) * pixel_diff_y          # 小孔成像：物理高度误差 = (深度/焦距) * 像素差
-                pitch_angle_deg = math.degrees(math.atan2(pixel_diff_y, FY))    # 三角函数：求出镜头补偿仰角
+                #计算原始物理角度
+                raw_pitch_angle = math.degrees(math.atan2(pixel_diff_y, FY))    # 三角函数：求出镜头补偿仰角
+                #新增
+                # 2. 绝对限幅 (Hard Clamp)：强制把单次补偿角度限制在 ±5.0 度以内
+                # 汽车悬挂的物理形变和道路坡度造成的俯仰误差，绝不可能单次超过 5 度
+                MAX_PITCH = 5.0
+                clamped_pitch = max(-MAX_PITCH, min(MAX_PITCH, raw_pitch_angle))
+
+                # 3. 一阶低通滤波 (EMA Filter)：消除 YOLO 框的连续高频抖动
+                # 权重 0.2 表示只信任 20% 的当前新角度，保留 80% 的历史平滑角度
+                ALPHA = 0.2
+                filtered_pitch = ALPHA * clamped_pitch + (1.0 - ALPHA) * last_filtered_pitch
+                last_filtered_pitch = filtered_pitch  # 更新历史值
+
+                # 将最终的平滑限幅角度交给网络发送
+                pitch_angle_deg = filtered_pitch
 
                 # 将算出的自动俯仰角通过本地 UDP 广播给键盘轨迹规划进程
                 udp_sender.sendto(str(pitch_angle_deg).encode('utf-8'), ("127.0.0.1", UDP_PITCH_PORT))
