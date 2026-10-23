@@ -86,7 +86,7 @@ def process_ar_casting():
             for box in result.boxes:
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 quest_cx, quest_cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
-                # 【核心过滤】如果椅子的中心点超出了左右边界，直接无视（禁止识别两边）
+                # 如果椅子的中心点超出了左右边界，直接无视（禁止识别两边）
                 if not (roi_left <= quest_cx <= roi_right):
                     continue
                 
@@ -191,7 +191,11 @@ def process_keyboard_controller():
         """核心轨迹分发函数：基于当前车道配置和最终合成仰角生成 80 个点，通过 TCP 传给 Unity"""
         state["last_active_direction"] = direction
         config = left_lane_config if direction == 'left' else right_lane_config
-        trajectory_points = planner.generate(0.0, config["end_y"], config["X_max"], config["pitch"])
+        
+        # 🚨 核心修复 1：将手动基准角与 YOLO 算出的自动补偿角相加，否则视觉贴地补偿无效！
+        total_pitch = config["pitch"] + state["auto_pitch_deg"]
+        
+        trajectory_points = planner.generate(0.0, config["end_y"], config["X_max"], total_pitch)
         trajectory_data = "\n".join([f"{p[0]},{p[1]},{p[2]}" for p in trajectory_points])
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -203,13 +207,26 @@ def process_keyboard_controller():
             pass
 
     def send_speed(speed_val_str):
-        """向 Unity 测速端口发送车速字符串数据"""
+        """同时向 Unity 测速面板 和 轨迹线系统 发送车速"""
+        
+        # 1. 保持原有逻辑：发给 50002 端口，更新 UI 上的 "xx km/h" 文字
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(1.0)
-            s.connect((QUEST_IP_AR, SPEED_PORT))
-            s.sendall(f"{speed_val_str}km/h".encode('utf-8'))
-            s.close()
+            s1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s1.settimeout(1.0)
+            s1.connect((QUEST_IP_AR, SPEED_PORT))
+            s1.sendall(f"{speed_val_str}km/h".encode('utf-8'))
+            s1.close()
+        except Exception:
+            pass
+            
+        # 2. 🚨 核心修复 2：必须把速度发给 50001 端口！
+        # Line.cs 收到 "SPEED:xx" 后，才会把你按空格后的 backwardSpeed 从 0 变成对应的物理车速
+        try:
+            s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s2.settimeout(1.0)
+            s2.connect((QUEST_IP_AR, LINE_PORT))
+            s2.sendall(f"SPEED:{speed_val_str}".encode('utf-8'))
+            s2.close()
         except Exception:
             pass
 
@@ -221,55 +238,7 @@ def process_keyboard_controller():
         try:
             if hasattr(key, 'char') and key.char is not None:
                 key_char = key.char.lower()
-                if key_char == 'w':
-                    left_lane_config["X_max"] += LENGTH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 's':
-                    left_lane_config["X_max"] -= LENGTH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'a':
-                    left_lane_config["end_y"] -= LATERAL_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'd':
-                    left_lane_config["end_y"] += LATERAL_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'q':
-                    left_lane_config["pitch"] += PITCH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'e':
-                    left_lane_config["pitch"] -= PITCH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'i':
-                    right_lane_config["X_max"] += LENGTH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'k':
-                    right_lane_config["X_max"] -= LENGTH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'j':
-                    right_lane_config["end_y"] -= LATERAL_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'l':
-                    right_lane_config["end_y"] += LATERAL_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'u':
-                    right_lane_config["pitch"] += PITCH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'o':
-                    right_lane_config["pitch"] -= PITCH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'r':
+                if key_char == 'r':
                     try:
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(1.0);
