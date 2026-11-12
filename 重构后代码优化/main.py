@@ -114,7 +114,6 @@ def process_ar_casting():
                 Z = depth_receiver.get_depth()      # 瞬间读出 C++ 最新的物理深度
                 if Z <= 0: Z = 3.0                  # 防御机制：防止除数为 0
                 real_height_diff = (Z / FY) * pixel_diff_y          # 小孔成像：物理高度误差 = (深度/焦距) * 像素差
-                #计算原始物理角度
                 pitch_angle_deg = math.degrees(math.atan2(pixel_diff_y, FY))    # 三角函数：求出镜头补偿仰角
 
                 # 将算出的自动俯仰角通过本地 UDP 广播给键盘轨迹规划进程
@@ -165,7 +164,7 @@ def process_keyboard_controller():
     planner = TrajectoryPlanner(num_points=80)  # 实例化五次多项式矩阵生成器
 
     def receive_auto_pitch():
-        """后台进程1:后台专职接收本地 UDP 50007 端口发来的自动俯仰角补偿      1:专职接收进程 1 算出来的俯仰角补偿"""
+        """后台进程1：后台专职接收本地 UDP 50007 端口发来的自动俯仰角补偿      1：专职接收进程 1 算出来的俯仰角补偿"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("127.0.0.1", UDP_PITCH_PORT))
         while True:
@@ -176,7 +175,7 @@ def process_keyboard_controller():
                 pass
 
     def print_status_loop():
-        """后台进程2:每隔 0.5 秒在终端单行刷新当前车道状态及仰角合成数值，防止刷屏"""
+        """后台进程2：每隔 0.5 秒在终端单行刷新当前车道状态及仰角合成数值，防止刷屏"""
         while True:
             config = left_lane_config if state["last_active_direction"] == 'left' else right_lane_config
             x, y, manual_p = config["X_max"], config["end_y"], config["pitch"]
@@ -236,69 +235,10 @@ def process_keyboard_controller():
 #后续删掉这个改为CAN读取速度
     def on_press(key):
         """pynput 键盘监听回调：处理 WASD/IJKL 微调、空格钉地、小键盘车速输入及回车/退格逻辑"""
-        # 1. 
         try:
             if hasattr(key, 'char') and key.char is not None:
                 key_char = key.char.lower()
-<<<<<<< Updated upstream
                 if key_char == 'r':
-=======
-<<<<<<< HEAD
-                if key_char == 'w':
-                    left_lane_config["X_max"] += LENGTH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 's':
-                    left_lane_config["X_max"] -= LENGTH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'a':
-                    left_lane_config["end_y"] -= LATERAL_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'd':
-                    left_lane_config["end_y"] += LATERAL_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'q':
-                    left_lane_config["pitch"] += PITCH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'e':
-                    left_lane_config["pitch"] -= PITCH_STEP;
-                    plan_and_send('left');
-                    return
-                elif key_char == 'i':
-                    right_lane_config["X_max"] += LENGTH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'k':
-                    right_lane_config["X_max"] -= LENGTH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'j':
-                    right_lane_config["end_y"] -= LATERAL_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'l':
-                    right_lane_config["end_y"] += LATERAL_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'u':
-                    right_lane_config["pitch"] += PITCH_STEP;
-                    plan_and_send('right');
-                    return
-                elif key_char == 'o':
-                    right_lane_config["pitch"] -= PITCH_STEP;
-                    plan_and_send('right');
-                    return
-
-                #新增：按 R 键重置 Unity 端的轨迹点，防止轨迹卡死
-                elif key_char == 'r':
-=======
-                if key_char == 'r':
->>>>>>> 618cedf0562ed7cc653148cd92105d12a4a4b07b
->>>>>>> Stashed changes
                     try:
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(1.0);
@@ -319,18 +259,14 @@ def process_keyboard_controller():
                 except Exception:
                     pass
                 return
-
-            # 拦截小键盘数字
-            elif hasattr(key, 'vk') and 96 <= key.vk <= 105:    
+            elif hasattr(key, 'vk') and 96 <= key.vk <= 105:    # 拦截小键盘数字
                 state["current_number_input"] += str(key.vk - 96)
                 print(f"\r[正在输入车速...] {state['current_number_input']} km/h                   ", end="",
                       flush=True)
                 return
-            
             elif key == keyboard.Key.up:
                 plan_and_send(state["last_active_direction"]);
                 return
-            
             elif key == keyboard.Key.down:
                 try:
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -341,14 +277,12 @@ def process_keyboard_controller():
                 except Exception:
                     pass
                 return
-            
             elif key == keyboard.Key.enter:
                 if state["current_number_input"]:
                     send_speed(state["current_number_input"])
                     state["current_number_input"] = ""
                     plan_and_send(state["last_active_direction"])
                 return
-            
             elif key == keyboard.Key.backspace:
                 if len(state["current_number_input"]) > 0:
                     state["current_number_input"] = state["current_number_input"][:-1]
@@ -360,7 +294,7 @@ def process_keyboard_controller():
 
     def can_speed_receiver_loop():
         """
-        后台线程 3:接收 C++ 底层读取的真实 CAN 车速，并驱动全系统更新
+        后台线程 3：接收 C++ 底层读取的真实 CAN 车速，并驱动全系统更新
         """
         # 1. 建立 UDP 监听端口，专门等 C++ 传数据过来
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
